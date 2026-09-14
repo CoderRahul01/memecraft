@@ -328,6 +328,17 @@ function setLayout(layout) {
     modeHeader.classList.remove('active');
     classicInputs.classList.remove('hidden');
     modernInputs.classList.add('hidden');
+    // If header caption has content, sync to overlay texts
+    if (state.headerCaption.trim()) {
+      const parts = state.headerCaption.split('\n').map((p) => p.trim()).filter(Boolean);
+      if (parts.length === 1) {
+        if (state.texts[0]) state.texts[0].text = parts[0];
+      } else if (parts.length >= 2) {
+        if (state.texts[0]) state.texts[0].text = parts[0];
+        if (state.texts[1]) state.texts[1].text = parts.slice(1).join(' ');
+      }
+      renderTextLayersList();
+    }
   } else {
     modeHeader.classList.add('active');
     modeOverlay.classList.remove('active');
@@ -476,6 +487,9 @@ function setupCanvasInteractions() {
 
   // Pointer Move
   function onMove(e) {
+    if (isDrawing || isDragging) {
+      if (e.cancelable) e.preventDefault();
+    }
     const pos = getPos(e);
 
     if (isDrawing && currentStroke) {
@@ -790,11 +804,19 @@ function downloadImage() {
   const ext = state.exportFormat === 'jpeg' ? 'jpg' : 'png';
   const quality = state.exportFormat === 'jpeg' ? state.jpegQuality : undefined;
 
-  const link = document.createElement('a');
-  link.download = `memecraft-${Date.now()}.${ext}`;
-  link.href = canvas.toDataURL(mime, quality);
-  link.click();
-  showToast(`Downloaded as ${ext.toUpperCase()}`);
+  canvas.toBlob((blob) => {
+    if (!blob) {
+      showToast('Could not generate image');
+      return;
+    }
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.download = `memecraft-${Date.now()}.${ext}`;
+    link.href = blobUrl;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1500);
+    showToast(`Downloaded as ${ext.toUpperCase()}`);
+  }, mime, quality);
 }
 
 function resetAll() {

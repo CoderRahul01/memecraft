@@ -1498,7 +1498,10 @@ async function playAudioBuffer(url, fallbackType, aCtx, destNode, delayMs = 0, v
       const gain = aCtx.createGain();
       gain.gain.setValueAtTime(volume, startTime);
       source.connect(gain);
-      gain.connect(destNode);
+      if (destNode) gain.connect(destNode);
+      if (aCtx.destination) {
+        try { gain.connect(aCtx.destination); } catch (e) {}
+      }
       source.start(startTime);
       return source;
     } else {
@@ -1507,6 +1510,28 @@ async function playAudioBuffer(url, fallbackType, aCtx, destNode, delayMs = 0, v
     }
   } catch (err) {
     synthesizeSoundFallback(fallbackType, aCtx, destNode, delayMs);
+    return null;
+  }
+}
+
+function scheduleAudioBuffer(buffer, fallbackType, aCtx, destNode, baseTime, delaySec = 0, volume = 1.0, loop = false) {
+  if (!aCtx) return null;
+  const startTime = Math.max(aCtx.currentTime, baseTime + delaySec);
+  if (buffer) {
+    const source = aCtx.createBufferSource();
+    source.buffer = buffer;
+    source.loop = loop;
+    const gain = aCtx.createGain();
+    gain.gain.setValueAtTime(volume, startTime);
+    source.connect(gain);
+    if (destNode) gain.connect(destNode);
+    if (aCtx.destination) {
+      try { gain.connect(aCtx.destination); } catch (e) {}
+    }
+    source.start(startTime);
+    return source;
+  } else if (fallbackType) {
+    synthesizeSoundFallback(fallbackType, aCtx, destNode, delaySec * 1000);
     return null;
   }
 }
@@ -1711,16 +1736,29 @@ async function generateMemeVideo() {
     Rendering Video...
   `;
   videoProgressBox.classList.remove('hidden');
-  videoProgressBarFill.style.width = '0%';
-  videoProgressLabel.textContent = 'Initializing soundboard & video stream...';
+  videoProgressBarFill.style.width = '4%';
+  videoProgressLabel.textContent = 'Preparing meme canvas snapshot & soundboard...';
 
+  // 1. Ensure current canvas is rendered with all active layers (texts, stickers, drawings, filters)
+  render();
+
+  // 2. Snapshot the live canvas with 100% WYSIWYG fidelity
+  const memeSnapshot = document.createElement('canvas');
+  memeSnapshot.width = canvas.width;
+  memeSnapshot.height = canvas.height;
+  const snapCtx = memeSnapshot.getContext('2d');
+  snapCtx.drawImage(canvas, 0, 0);
+
+  // 3. Audio Context setup & Preloading authentic viral audio clips
   const aCtx = getAudioContext();
+  if (aCtx && aCtx.state === 'suspended') {
+    try { await aCtx.resume(); } catch (e) {}
+  }
   const audioDest = aCtx ? aCtx.createMediaStreamDestination() : null;
 
-  const duration = state.videoDuration; // seconds
-  const punchTime = duration * 0.5;
+  const duration = state.videoDuration || 6;
+  const punchTime = duration * 0.48;
 
-  // Sound cues setup
   const sfxUrls = {
     'laugh-track': 'assets/audio/laugh-track.wav',
     'vine-boom': 'assets/audio/vine-boom.wav',
@@ -1730,44 +1768,42 @@ async function generateMemeVideo() {
     'bell-ping': 'assets/audio/bell-ping.wav'
   };
 
-  if (aCtx && audioDest) {
-    // 1. Play Background Beat if enabled
-    if (state.videoBgm) {
-      playAudioBuffer('assets/audio/lofi-beat.wav', 'lofi-beat', aCtx, audioDest, 0, 0.16, true);
-    }
-    // 2. Play Whoosh transition
-    playAudioBuffer('assets/audio/whoosh.wav', 'whoosh', aCtx, audioDest, Math.max(0, (punchTime - 0.35) * 1000), 0.7);
+  let bgmBuffer = null;
+  let whooshBuffer = null;
+  let punchBuffer = null;
 
-    // 3. Play Punchline SFX
-    if (state.videoSfx && state.videoSfx !== 'none' && sfxUrls[state.videoSfx]) {
-      playAudioBuffer(sfxUrls[state.videoSfx], state.videoSfx, aCtx, audioDest, punchTime * 1000, 0.9);
+  if (aCtx) {
+    videoProgressLabel.textContent = 'Preloading authentic sound assets...';
+    try {
+      const loads = [
+        loadAudioBuffer('assets/audio/whoosh.wav').then((b) => { whooshBuffer = b; }),
+        state.videoBgm ? loadAudioBuffer('assets/audio/lofi-beat.wav').then((b) => { bgmBuffer = b; }) : Promise.resolve(),
+        (state.videoSfx && state.videoSfx !== 'none' && sfxUrls[state.videoSfx])
+          ? loadAudioBuffer(sfxUrls[state.videoSfx]).then((b) => { punchBuffer = b; })
+          : Promise.resolve()
+      ];
+      await Promise.all(loads);
+    } catch (e) {
+      console.warn('Audio pre-load note:', e);
     }
   }
 
-  // Natural Speech Narration
-  const topTextObj = state.texts.find((t) => t.isTop) || state.texts[0];
-  const bottomTextObj = state.texts.find((t) => t.isBottom) || state.texts[1];
-  const setupText = (state.layout === 'modern' ? state.headerCaption : topTextObj?.text) || '';
-  const punchlineText = (state.layout === 'modern' ? '' : bottomTextObj?.text) || '';
-
-  speakMemeNarration(setupText, 300);
-  if (punchlineText) {
-    speakMemeNarration(punchlineText, (punchTime + 0.3) * 1000);
-  }
-
-  // Target offscreen canvas: 720x1280 (9:16 vertical video for mobile / Shorts / Reels)
+  // 4. Target offscreen canvas: 720x1280 (Standard 9:16 vertical video for mobile / Shorts / Reels)
   const vWidth = 720;
   const vHeight = 1280;
   const vCanvas = document.createElement('canvas');
   vCanvas.width = vWidth;
   vCanvas.height = vHeight;
   const vCtx = vCanvas.getContext('2d');
+  vCtx.imageSmoothingEnabled = true;
+  vCtx.imageSmoothingQuality = 'high';
 
-  // MediaRecorder stream setup
+  // 5. MediaRecorder stream setup
   const videoStream = vCanvas.captureStream(30);
   const streamTracks = [...videoStream.getVideoTracks()];
   if (audioDest && audioDest.stream) {
-    streamTracks.push(...audioDest.stream.getAudioTracks());
+    const aTracks = audioDest.stream.getAudioTracks();
+    streamTracks.push(...aTracks);
   }
   const combinedStream = new MediaStream(streamTracks);
 
@@ -1784,7 +1820,7 @@ async function generateMemeVideo() {
 
   let mediaRecorder;
   try {
-    mediaRecorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 3000000 });
+    mediaRecorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 4500000 });
   } catch (err) {
     mediaRecorder = new MediaRecorder(combinedStream);
   }
@@ -1818,30 +1854,51 @@ async function generateMemeVideo() {
     showToast('Video ready! 🎬');
   };
 
-  mediaRecorder.start(100);
-
-  // Template Split-Panel Geometry
-  const imgW = state.activeImage.naturalWidth;
-  const imgH = state.activeImage.naturalHeight;
-  const tmplId = state.currentTemplate?.id || '';
-
-  // Setup panel (A) and Punchline panel (B)
-  let panelA = { sx: 0, sy: 0, sw: imgW, sh: imgH / 2 };
-  let panelB = { sx: 0, sy: imgH / 2, sw: imgW, sh: imgH / 2 };
-
-  if (tmplId === 'woman-cat') {
-    panelA = { sx: 0, sy: 0, sw: imgW / 2, sh: imgH };
-    panelB = { sx: imgW / 2, sy: 0, sw: imgW / 2, sh: imgH };
-  } else if (tmplId === 'cmm') {
-    panelA = { sx: 0, sy: 0, sw: imgW * 0.7, sh: imgH * 0.65 };
-    panelB = { sx: 0, sy: imgH * 0.35, sw: imgW, sh: imgH * 0.65 };
-  } else if (tmplId === 'spongebob' || tmplId === 'fine' || tmplId === 'doge') {
-    panelA = { sx: 0, sy: 0, sw: imgW, sh: imgH };
-    panelB = { sx: imgW * 0.1, sy: imgH * 0.1, sw: imgW * 0.8, sh: imgH * 0.8 };
+  // 6. Schedule Audio Cues Exactly (Pre-loaded buffers guarantee sample accuracy)
+  if (aCtx && audioDest) {
+    const baseTime = aCtx.currentTime + 0.05;
+    if (bgmBuffer) {
+      scheduleAudioBuffer(bgmBuffer, 'lofi-beat', aCtx, audioDest, baseTime, 0, 0.22, true);
+    }
+    if (whooshBuffer) {
+      scheduleAudioBuffer(whooshBuffer, 'whoosh', aCtx, audioDest, baseTime, Math.max(0, punchTime - 0.35), 0.65);
+    }
+    if (punchBuffer) {
+      scheduleAudioBuffer(punchBuffer, state.videoSfx, aCtx, audioDest, baseTime, punchTime, 0.95);
+    }
   }
 
+  // 7. Natural Speech Narration (if enabled)
+  const topTextObj = state.texts.find((t) => t.isTop) || state.texts[0];
+  const bottomTextObj = state.texts.find((t) => t.isBottom) || state.texts[1];
+  const setupText = (state.layout === 'modern' ? state.headerCaption : topTextObj?.text) || '';
+  const punchlineText = (state.layout === 'modern' ? '' : bottomTextObj?.text) || '';
+
+  if (state.videoSpeech) {
+    speakMemeNarration(setupText, 250);
+    if (punchlineText) {
+      speakMemeNarration(punchlineText, (punchTime + 0.2) * 1000);
+    }
+  }
+
+  // 8. Start recording
+  mediaRecorder.start(100);
+
+  // 9. Foreground & Background Dimensions
+  // Maintain true aspect ratio of user canvas without stretching or slicing
+  const cardMaxWidth = 640;
+  const cardMaxHeight = 880;
+  const cardScale = Math.min(cardMaxWidth / memeSnapshot.width, cardMaxHeight / memeSnapshot.height);
+  const cardW = Math.round(memeSnapshot.width * cardScale);
+  const cardH = Math.round(memeSnapshot.height * cardScale);
+
+  const bgScale = Math.max(vWidth / memeSnapshot.width, vHeight / memeSnapshot.height);
+  const bgW = memeSnapshot.width * bgScale;
+  const bgH = memeSnapshot.height * bgScale;
+  const bgX = (vWidth - bgW) / 2;
+  const bgY = (vHeight - bgH) / 2;
+
   const startRecordTime = performance.now();
-  const totalDurationMs = duration * 1000;
 
   function renderVideoFrame(now) {
     const elapsedMs = now - startRecordTime;
@@ -1851,143 +1908,231 @@ async function generateMemeVideo() {
     videoProgressBarFill.style.width = `${progress}%`;
     videoProgressLabel.textContent = `Rendering video... ${progress}%`;
 
-    // 1. Draw blurred background covering 720x1280
+    const isPunchline = t >= punchTime;
+    const timeSincePunch = Math.max(0, t - punchTime);
+
+    // --- A. Draw Ambient Blurred Background ---
     vCtx.save();
-    vCtx.filter = 'blur(22px) brightness(0.65)';
-    vCtx.drawImage(state.activeImage, -40, -40, vWidth + 80, vHeight + 80);
+    vCtx.filter = 'blur(28px) brightness(0.42) saturate(135%)';
+    vCtx.drawImage(memeSnapshot, bgX, bgY, bgW, bgH);
     vCtx.restore();
 
-    // 2. Camera tracking calculation
-    const timeSincePunch = t - punchTime;
-    const isPunchline = t >= punchTime;
+    // Dark Radial Vignette
+    vCtx.save();
+    const vig = vCtx.createRadialGradient(vWidth / 2, vHeight / 2, vWidth * 0.25, vWidth / 2, vHeight / 2, vHeight * 0.72);
+    vig.addColorStop(0, 'rgba(0, 0, 0, 0.05)');
+    vig.addColorStop(1, 'rgba(0, 0, 0, 0.68)');
+    vCtx.fillStyle = vig;
+    vCtx.fillRect(0, 0, vWidth, vHeight);
+    vCtx.restore();
+
+    // --- B. Camera Physics: Ken Burns + Tension Pull + Snap Punch & Shake ---
+    let zoom = 1.0;
+    let rotation = 0;
     let shakeX = 0;
     let shakeY = 0;
 
-    if (isPunchline && timeSincePunch < 0.65) {
-      const shakeAmp = Math.max(0, 1.0 - timeSincePunch / 0.65) * (state.videoStyle === 'deepfry' ? 26 : 16);
-      shakeX = Math.sin(timeSincePunch * 55) * shakeAmp;
-      shakeY = Math.cos(timeSincePunch * 55) * (shakeAmp * 0.75);
-    }
-
-    // Centered foreground target rect
-    const fgMaxWidth = 660;
-    const fgMaxHeight = 840;
-    const fgScale = Math.min(fgMaxWidth / imgW, fgMaxHeight / imgH);
-    const fgW = imgW * fgScale;
-    const fgH = imgH * fgScale;
-    const fgX = (vWidth - fgW) / 2 + shakeX;
-    const fgY = (vHeight - fgH) / 2 + shakeY;
-
-    // Draw card drop shadow & background container
-    vCtx.save();
-    vCtx.shadowColor = 'rgba(0, 0, 0, 0.7)';
-    vCtx.shadowBlur = 24;
-    vCtx.fillStyle = '#000000';
-    vCtx.fillRect(fgX, fgY, fgW, fgH);
-    vCtx.restore();
-
-    // Apply Mood Visual Filters
-    vCtx.save();
-    if (state.videoStyle === 'deepfry' && isPunchline) {
-      vCtx.filter = 'contrast(155%) saturate(190%)';
-    } else if (state.videoStyle === 'bruh' && isPunchline && timeSincePunch < 0.9) {
-      vCtx.filter = 'grayscale(85%) contrast(120%)';
-    } else if (state.videoStyle === 'drift') {
-      vCtx.filter = 'contrast(108%)';
-    }
-
-    // Smooth Ken Burns Camera Zoom on Foreground
     if (!isPunchline) {
-      // Scene 1: Slow camera drift into Panel A
-      const zoom = 1.0 + (t / punchTime) * 0.08;
-      vCtx.drawImage(
-        state.activeImage,
-        panelA.sx, panelA.sy, panelA.sw, panelA.sh,
-        fgX - (fgW * (zoom - 1)) / 2, fgY - (fgH * (zoom - 1)) / 2,
-        fgW * zoom, fgH * (panelA.sh / imgH) * zoom
-      );
+      if (t < punchTime - 0.35) {
+        // Slow Ken Burns drift into the setup
+        const p1 = t / (punchTime - 0.35);
+        zoom = 1.0 + p1 * 0.05;
+        rotation = Math.sin(t * 1.8) * 0.005;
+      } else {
+        // Tension anticipation (pull-back)
+        const pWhoosh = (t - (punchTime - 0.35)) / 0.35;
+        zoom = 1.05 - pWhoosh * 0.04;
+        rotation = 0;
+      }
     } else {
-      // Scene 2: Snap Zoom on Panel B with punch impact
-      const punchZoom = 1.12 - Math.min(0.08, timeSincePunch * 0.08);
-      vCtx.drawImage(
-        state.activeImage,
-        panelB.sx, panelB.sy, panelB.sw, panelB.sh,
-        fgX - (fgW * (punchZoom - 1)) / 2, fgY + (fgH * (panelB.sy / imgH)),
-        fgW * punchZoom, fgH * (panelB.sh / imgH) * punchZoom
-      );
+      // Punchline Impact: Instant pop to 1.14x, easing to 1.08x
+      const punchZoom = 1.08 + 0.08 * Math.exp(-timeSincePunch * 4.5);
+      zoom = punchZoom;
+
+      // Realistic damped screen shake
+      if (timeSincePunch < 0.65) {
+        const decay = Math.exp(-timeSincePunch * 6.0);
+        const intensity = (state.videoStyle === 'deepfry' ? 30 : 18) * decay;
+        shakeX = Math.sin(timeSincePunch * 54) * intensity;
+        shakeY = Math.cos(timeSincePunch * 44) * (intensity * 0.72);
+      }
     }
+
+    // --- C. Foreground Meme Card Rendering ---
+    const centerX = vWidth / 2 + shakeX;
+    const centerY = (vHeight / 2 - 20) + shakeY;
+    const halfW = cardW / 2;
+    const halfH = cardH / 2;
+    const cornerRadius = 20;
+
+    vCtx.save();
+    vCtx.translate(centerX, centerY);
+    vCtx.rotate(rotation);
+    vCtx.scale(zoom, zoom);
+
+    // 1. Drop shadow
+    vCtx.save();
+    vCtx.shadowColor = 'rgba(0, 0, 0, 0.75)';
+    vCtx.shadowBlur = 32;
+    vCtx.shadowOffsetX = 0;
+    vCtx.shadowOffsetY = 14;
+    vCtx.fillStyle = '#000000';
+    vCtx.beginPath();
+    if (typeof vCtx.roundRect === 'function') {
+      vCtx.roundRect(-halfW, -halfH, cardW, cardH, cornerRadius);
+    } else {
+      vCtx.rect(-halfW, -halfH, cardW, cardH);
+    }
+    vCtx.fill();
     vCtx.restore();
 
-    // 3. Render High-Visibility Meme Captions
-    const fontFamily = state.fontFamily || 'Impact';
-    vCtx.textAlign = 'center';
-    vCtx.textBaseline = 'middle';
+    // 2. Clipped Meme Artwork
+    vCtx.save();
+    vCtx.beginPath();
+    if (typeof vCtx.roundRect === 'function') {
+      vCtx.roundRect(-halfW, -halfH, cardW, cardH, cornerRadius);
+    } else {
+      vCtx.rect(-halfW, -halfH, cardW, cardH);
+    }
+    vCtx.clip();
 
-    // Top Caption (Scene 1)
-    if (setupText) {
-      vCtx.save();
-      const cap1Y = 140;
-      vCtx.font = `900 46px "${fontFamily}", Impact, sans-serif`;
-      vCtx.fillStyle = '#FFFFFF';
-      vCtx.strokeStyle = '#000000';
-      vCtx.lineWidth = 9;
-      vCtx.lineJoin = 'round';
-      vCtx.strokeText(setupText.toUpperCase(), vWidth / 2, cap1Y);
-      vCtx.fillText(setupText.toUpperCase(), vWidth / 2, cap1Y);
-      vCtx.restore();
+    // Visual mood filter
+    if (state.videoStyle === 'deepfry' && isPunchline) {
+      vCtx.filter = 'contrast(165%) saturate(220%) brightness(1.1)';
+    } else if (state.videoStyle === 'bruh' && isPunchline && timeSincePunch < 1.0) {
+      vCtx.filter = 'grayscale(100%) contrast(125%)';
+    } else if (state.videoStyle === 'drift') {
+      vCtx.filter = 'contrast(106%) saturate(110%)';
     }
 
-    // Bottom Caption (Scene 2 on Punchline)
-    if (punchlineText && isPunchline) {
-      vCtx.save();
-      const cap2Y = vHeight - 160;
-      const popScale = Math.min(1.0, timeSincePunch * 4.0);
-      vCtx.translate(vWidth / 2, cap2Y);
-      vCtx.scale(popScale, popScale);
+    vCtx.drawImage(memeSnapshot, -halfW, -halfH, cardW, cardH);
+    vCtx.restore();
 
-      vCtx.font = `900 48px "${fontFamily}", Impact, sans-serif`;
-      vCtx.fillStyle = '#FFE600'; // Vibrant punchline yellow
-      vCtx.strokeStyle = '#000000';
-      vCtx.lineWidth = 10;
-      vCtx.lineJoin = 'round';
-      vCtx.strokeText(punchlineText.toUpperCase(), 0, 0);
-      vCtx.fillText(punchlineText.toUpperCase(), 0, 0);
-      vCtx.restore();
+    // 3. Crisp subtle border
+    vCtx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+    vCtx.lineWidth = 2.5;
+    vCtx.beginPath();
+    if (typeof vCtx.roundRect === 'function') {
+      vCtx.roundRect(-halfW, -halfH, cardW, cardH, cornerRadius);
+    } else {
+      vCtx.rect(-halfW, -halfH, cardW, cardH);
     }
+    vCtx.stroke();
 
-    // 4. Render Reaction Overlays
+    vCtx.restore();
+
+    // --- D. Style-Specific Reaction FX & Overlays ---
     if (isPunchline) {
-      if (state.videoReaction === 'laugh') {
-        // Floating 😂 laughing emojis
-        vCtx.font = '54px sans-serif';
-        const floatY = (vHeight - 240) - (timeSincePunch * 90);
-        const alpha = Math.max(0, 1.0 - timeSincePunch / (duration - punchTime));
-        vCtx.globalAlpha = alpha;
-        vCtx.fillText('😂', vWidth * 0.25 + Math.sin(timeSincePunch * 4) * 15, floatY);
-        vCtx.fillText('🤣', vWidth * 0.75 + Math.cos(timeSincePunch * 4) * 15, floatY - 30);
-        vCtx.globalAlpha = 1.0;
-      } else if (state.videoReaction === 'bruh') {
-        // Bold red rubber stamp BRUH
+      if (state.videoStyle === 'sitcom' || state.videoReaction === 'laugh') {
+        // Floating emoji laughter stream
         vCtx.save();
-        vCtx.translate(vWidth / 2, vHeight / 2);
-        vCtx.rotate(-0.2);
-        vCtx.fillStyle = 'rgba(239, 68, 68, 0.9)';
-        vCtx.strokeStyle = '#FFFFFF';
-        vCtx.lineWidth = 6;
-        vCtx.font = '900 76px Impact, sans-serif';
-        vCtx.strokeText('BRUH', 0, 0);
+        vCtx.font = '50px sans-serif';
+        vCtx.textAlign = 'center';
+        const emojis = ['😂', '🤣', '💀', '🔥', '👏', '😂', '🤣'];
+        emojis.forEach((em, idx) => {
+          const p = timeSincePunch + idx * 0.14;
+          const y = vHeight - 120 - (p * 190);
+          if (y > -50 && y < vHeight) {
+            const x = (vWidth * 0.15) + ((idx * 90) % (vWidth * 0.7)) + Math.sin(p * 4.5 + idx) * 22;
+            const alpha = Math.max(0, Math.min(1.0, 1.0 - (vHeight - y) / (vHeight * 0.85)));
+            vCtx.globalAlpha = alpha;
+            vCtx.fillText(em, x, y);
+          }
+        });
+        vCtx.restore();
+
+        // Retro Live Comedy indicator
+        vCtx.save();
+        vCtx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+        if (typeof vCtx.roundRect === 'function') {
+          vCtx.beginPath();
+          vCtx.roundRect(32, 40, 180, 40, 12);
+          vCtx.fill();
+        }
+        const blink = Math.floor(t * 3) % 2 === 0;
+        vCtx.fillStyle = blink ? '#EF4444' : '#7F1D1D';
+        vCtx.beginPath();
+        vCtx.arc(52, 60, 6, 0, Math.PI * 2);
+        vCtx.fill();
+        vCtx.fillStyle = '#FFFFFF';
+        vCtx.font = '700 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        vCtx.textAlign = 'left';
+        vCtx.textBaseline = 'middle';
+        vCtx.fillText('LIVE COMEDY', 68, 60);
+        vCtx.restore();
+
+      } else if (state.videoStyle === 'bruh' || state.videoReaction === 'bruh') {
+        // Red Rubber Stamp BRUH with stamp bounce
+        vCtx.save();
+        vCtx.translate(vWidth / 2, centerY);
+        vCtx.rotate(-0.16);
+        const stampProg = Math.min(1.0, timeSincePunch / 0.18);
+        const stampScale = stampProg < 1.0 
+          ? 2.5 - (1.5 * stampProg) + Math.sin(stampProg * Math.PI) * 0.25 
+          : 1.0;
+        vCtx.scale(stampScale, stampScale);
+
+        vCtx.strokeStyle = 'rgba(239, 68, 68, 0.92)';
+        vCtx.lineWidth = 7;
+        if (typeof vCtx.roundRect === 'function') {
+          vCtx.beginPath();
+          vCtx.roundRect(-150, -50, 300, 100, 14);
+          vCtx.stroke();
+        } else {
+          vCtx.strokeRect(-150, -50, 300, 100);
+        }
+        vCtx.font = '900 68px Impact, sans-serif';
+        vCtx.fillStyle = 'rgba(239, 68, 68, 0.92)';
+        vCtx.textAlign = 'center';
+        vCtx.textBaseline = 'middle';
         vCtx.fillText('BRUH', 0, 0);
         vCtx.restore();
+
       } else if (state.videoReaction === 'lasers') {
         // Glowing red laser eye effect
         vCtx.save();
         vCtx.fillStyle = '#FF0000';
         vCtx.shadowColor = '#FF0000';
-        vCtx.shadowBlur = 25;
+        vCtx.shadowBlur = 35;
         vCtx.beginPath();
-        vCtx.arc(fgX + fgW * 0.45, fgY + fgH * 0.35, 12, 0, Math.PI * 2);
-        vCtx.arc(fgX + fgW * 0.55, fgY + fgH * 0.35, 12, 0, Math.PI * 2);
+        vCtx.arc(centerX - 35, centerY - 25, 12, 0, Math.PI * 2);
+        vCtx.arc(centerX + 35, centerY - 25, 12, 0, Math.PI * 2);
         vCtx.fill();
+        vCtx.restore();
+      }
+    }
+
+    // --- E. Subtitle Pill (Only when Narration is spoken, positioned neatly below card) ---
+    if (state.videoSpeech) {
+      const activeCaption = isPunchline ? (punchlineText || setupText) : setupText;
+      if (activeCaption && activeCaption.trim()) {
+        vCtx.save();
+        const subY = vHeight - 110;
+        const font = '700 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        vCtx.font = font;
+        const textMetrics = vCtx.measureText(activeCaption);
+        const pillW = Math.min(vWidth - 80, textMetrics.width + 56);
+        const pillH = 48;
+        const pillX = (vWidth - pillW) / 2;
+
+        // Subtitle capsule background
+        vCtx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+        vCtx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        vCtx.lineWidth = 1.5;
+        vCtx.beginPath();
+        if (typeof vCtx.roundRect === 'function') {
+          vCtx.roundRect(pillX, subY - pillH / 2, pillW, pillH, 24);
+        } else {
+          vCtx.rect(pillX, subY - pillH / 2, pillW, pillH);
+        }
+        vCtx.fill();
+        vCtx.stroke();
+
+        // Subtitle text
+        vCtx.textAlign = 'center';
+        vCtx.textBaseline = 'middle';
+        vCtx.fillStyle = isPunchline ? '#FFE600' : '#FFFFFF';
+        vCtx.fillText(activeCaption.length > 38 ? activeCaption.slice(0, 36) + '...' : activeCaption, vWidth / 2, subY);
         vCtx.restore();
       }
     }

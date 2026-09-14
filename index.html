@@ -18,7 +18,7 @@
   <!-- Typography -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="style.css">
 </head>
@@ -60,6 +60,11 @@
       </label>
       <input type="file" id="imageInput" accept="image/*" class="sr-only">
 
+      <button type="button" id="btnFlipBase" class="upload-tile" title="Flip template image horizontally">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 2 21 6 17 10"/><path d="M3 6h18"/><polyline points="7 22 3 18 7 14"/><path d="M21 18H3"/></svg>
+        <span>Flip</span>
+      </button>
+
       <div class="template-list" id="templateList">
         <!-- Populated via JavaScript -->
       </div>
@@ -83,12 +88,15 @@
       <!-- Sidebar Controls -->
       <section class="controls-panel">
         <!-- Primary Tool Tabs -->
-        <div class="tool-tabs" role="tablist">
+        <div class="tool-tabs four-tabs" role="tablist">
           <button type="button" class="tool-tab active" id="tabText" data-tab="text">
             Text
           </button>
+          <button type="button" class="tool-tab" id="tabOverlay" data-tab="overlay">
+            Overlays
+          </button>
           <button type="button" class="tool-tab" id="tabDraw" data-tab="draw">
-            Red Marker
+            Marker
           </button>
           <button type="button" class="tool-tab" id="tabExport" data-tab="export">
             Export
@@ -122,6 +130,27 @@
             <!-- Dynamic Text Layer Inputs -->
             <div id="textLayersList" class="text-layers-list">
               <!-- Populated by JS -->
+            </div>
+
+            <div class="control-row">
+              <div class="control-group flex-1">
+                <label for="fontFamilySelect" class="control-label">Font</label>
+                <select id="fontFamilySelect" class="select-input">
+                  <option value="Impact" selected>Impact (Classic)</option>
+                  <option value="Inter">Inter (Clean)</option>
+                  <option value="Comic Neue">Comic Sans (Doge)</option>
+                  <option value="Courier New">Monospace (Code)</option>
+                </select>
+              </div>
+
+              <div class="control-group">
+                <label class="control-label">Text Color</label>
+                <div class="text-color-presets">
+                  <button type="button" class="btn-text-color active" data-color="white" title="White with black stroke" style="background:#ffffff; color:#000;">W</button>
+                  <button type="button" class="btn-text-color" data-color="yellow" title="Yellow subtitle with black stroke" style="background:#fde047; color:#000;">Y</button>
+                  <button type="button" class="btn-text-color" data-color="black" title="Black with white stroke" style="background:#000000; color:#fff;">B</button>
+                </div>
+              </div>
             </div>
 
             <div class="control-row">
@@ -161,7 +190,41 @@
           </div>
         </div>
 
-        <!-- TAB 2: DRAWING / RED MARKER -->
+        <!-- TAB 2: IMAGE OVERLAYS -->
+        <div id="paneOverlay" class="tab-pane hidden">
+          <div class="layer-header">
+            <span class="control-label">Image & Logo Overlays</span>
+            <label for="overlayInput" class="btn btn-ghost btn-sm" style="cursor: pointer;">
+              + Add Image
+            </label>
+            <input type="file" id="overlayInput" accept="image/*" class="sr-only">
+          </div>
+
+          <div id="overlayList" class="overlay-list">
+            <!-- Populated by JS -->
+          </div>
+
+          <div id="selectedOverlayControls" class="selected-overlay-controls hidden">
+            <div class="control-group">
+              <div class="control-label-row">
+                <label for="overlaySizeRange">Size</label>
+                <span id="overlaySizeVal">140px</span>
+              </div>
+              <input type="range" id="overlaySizeRange" min="30" max="400" value="140" step="4">
+            </div>
+
+            <div class="actions">
+              <button type="button" id="btnFlipOverlay" class="btn btn-secondary btn-sm">
+                Flip Horizontal
+              </button>
+              <button type="button" id="btnDeleteOverlay" class="btn btn-ghost btn-sm" style="color: #f85149;">
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 3: DRAWING / RED MARKER -->
         <div id="paneDraw" class="tab-pane hidden">
           <div class="control-group">
             <label class="control-label">Marker Mode</label>
@@ -207,6 +270,16 @@
 
         <!-- TAB 3: EXPORT & FORMAT -->
         <div id="paneExport" class="tab-pane hidden">
+          <div class="control-group">
+            <label class="control-label">Aspect Ratio</label>
+            <div class="ratio-toggle" role="group">
+              <button type="button" class="btn-ratio active" data-ratio="original">Original</button>
+              <button type="button" class="btn-ratio" data-ratio="1:1">1:1 Square</button>
+              <button type="button" class="btn-ratio" data-ratio="16:9">16:9 Wide</button>
+              <button type="button" class="btn-ratio" data-ratio="9:16">9:16 Story</button>
+            </div>
+          </div>
+
           <div class="control-group">
             <label class="control-label">Format</label>
             <div class="layout-toggle">

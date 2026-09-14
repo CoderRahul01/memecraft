@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MemeCraft — Fast, Clean Meme Creator</title>
+  <meta name="description" content="A simple, distraction-free meme creator. Choose classic templates, upload images, or paste directly from your clipboard.">
+
+  <!-- Open Graph / Social Meta -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="MemeCraft — Fast, Clean Meme Creator">
+  <meta property="og:description" content="A simple, distraction-free meme creator. Choose classic templates, upload images, or paste directly from your clipboard.">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="MemeCraft — Fast, Clean Meme Creator">
+  <meta name="twitter:description" content="A simple, distraction-free meme creator. Choose classic templates, upload images, or paste directly from your clipboard.">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+
+  <!-- Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Brand Header -->
+    <header class="header">
+      <div class="header-main">
+        <div class="brand">
+          <svg class="brand-logo" width="28" height="28" viewBox="0 0 32 32" fill="none">
+            <rect width="32" height="32" rx="8" fill="#1f6feb"/>
+            <rect x="5" y="5" width="22" height="22" rx="4" stroke="#ffffff" stroke-width="2"/>
+            <path d="M9 11h14M11 21h10" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="12" cy="16" r="1.5" fill="#ffffff"/>
+            <circle cx="20" cy="16" r="1.5" fill="#ffffff"/>
+          </svg>
+          <div class="brand-text">
+            <h1>MemeCraft</h1>
+            <span class="brand-tagline">Fast, distraction-free meme generator</span>
+          </div>
+        </div>
+
+        <div class="header-actions">
+          <button type="button" id="btnShareApp" class="btn btn-ghost btn-sm" title="Share MemeCraft link">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            Share App
+          </button>
+        </div>
+      </div>
+      <p class="subtitle">Select a template, upload an image, or paste from clipboard (<kbd>Ctrl+V</kbd> / <kbd>⌘V</kbd>)</p>
+    </header>
+
+    <!-- Template selector strip -->
+    <section class="template-bar" aria-label="Template selection">
+      <label for="imageInput" class="upload-tile" title="Upload custom image">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        <span>Upload</span>
+      </label>
+      <input type="file" id="imageInput" accept="image/*" class="sr-only">
+
+      <div class="template-list" id="templateList">
+        <!-- Populated via JavaScript -->
+      </div>
+    </section>
+
+    <!-- Main Workspace -->
+    <main class="main-layout">
+      <!-- Canvas Display -->
+      <section class="canvas-panel" id="dropZone">
+        <div class="canvas-frame" id="canvasContainer">
+          <canvas id="memeCanvas"></canvas>
+          <div class="drop-hint" id="dropOverlay">
+            <span>Drop image here</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Sidebar Controls -->
+      <section class="controls-panel">
+        <!-- Layout mode -->
+        <div class="control-group">
+          <label class="control-label">Layout</label>
+          <div class="layout-toggle" role="group">
+            <button type="button" class="toggle-btn active" id="modeOverlay" data-mode="classic">
+              Top & Bottom
+            </button>
+            <button type="button" class="toggle-btn" id="modeHeader" data-mode="modern">
+              Header Box
+            </button>
+          </div>
+        </div>
+
+        <!-- Inputs for Top & Bottom text -->
+        <div id="classicInputs" class="text-inputs-block">
+          <div class="control-group">
+            <label for="topText" class="control-label">Top Text</label>
+            <input type="text" id="topText" placeholder="Top text" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="control-group">
+            <label for="bottomText" class="control-label">Bottom Text</label>
+            <input type="text" id="bottomText" placeholder="Bottom text" autocomplete="off" spellcheck="false">
+          </div>
+        </div>
+
+        <!-- Input for Header caption -->
+        <div id="modernInputs" class="text-inputs-block hidden">
+          <div class="control-group">
+            <label for="captionText" class="control-label">Caption</label>
+            <textarea id="captionText" rows="3" placeholder="Write your caption here..."></textarea>
+          </div>
+        </div>
+
+        <!-- Text formatting -->
+        <div class="control-row">
+          <div class="control-group flex-1">
+            <div class="control-label-row">
+              <label for="fontSizeRange">Font Size</label>
+              <span id="fontSizeVal">38px</span>
+            </div>
+            <input type="range" id="fontSizeRange" min="18" max="72" value="38" step="2">
+          </div>
+
+          <div class="control-group">
+            <label class="control-label">Uppercase</label>
+            <label class="checkbox-label">
+              <input type="checkbox" id="capsCheckbox" checked>
+              <span>ALL CAPS</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="actions">
+          <button type="button" id="btnCopy" class="btn btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copy Image
+          </button>
+          <button type="button" id="btnDownload" class="btn btn-secondary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download
+          </button>
+          <button type="button" id="btnClear" class="btn btn-ghost" title="Clear text">
+            Clear
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <!-- Creator Footer -->
+    <footer class="footer">
+      <p>MemeCraft • Crafted with care by <a href="https://github.com/CoderRahul01" target="_blank" rel="noopener">Rahul Pandey</a> • 100% client-side & private</p>
+    </footer>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>

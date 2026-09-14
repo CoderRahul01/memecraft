@@ -54,7 +54,18 @@ const state = {
 
   // Export
   exportFormat: 'png', // 'png' | 'jpeg'
-  jpegQuality: 0.85
+  jpegQuality: 0.85,
+
+  // Video & Animation
+  videoStyle: 'sitcom', // 'sitcom' | 'bruh' | 'deepfry' | 'drift'
+  videoSpeech: true,
+  videoVoice: 'auto',
+  videoSfx: 'laugh-track',
+  videoBgm: true,
+  videoReaction: 'laugh',
+  videoDuration: 6, // 6s or 10s
+  currentVideoBlob: null,
+  currentVideoUrl: null
 };
 
 // Interaction tracking
@@ -120,6 +131,27 @@ const jpegQualityGroup = document.getElementById('jpegQualityGroup');
 const jpgQuality = document.getElementById('jpgQuality');
 const jpgQualityVal = document.getElementById('jpgQualityVal');
 const fileSizeEstimate = document.getElementById('fileSizeEstimate');
+
+// Video Tab & Modal Elements
+const tabVideo = document.getElementById('tabVideo');
+const paneVideo = document.getElementById('paneVideo');
+const btnGenerateVideo = document.getElementById('btnGenerateVideo');
+const videoProgressBox = document.getElementById('videoProgressBox');
+const videoProgressBarFill = document.getElementById('videoProgressBarFill');
+const videoProgressLabel = document.getElementById('videoProgressLabel');
+const videoVoiceSelect = document.getElementById('videoVoiceSelect');
+const videoSpeechToggle = document.getElementById('videoSpeechToggle');
+const videoSfxSelect = document.getElementById('videoSfxSelect');
+const videoBgmToggle = document.getElementById('videoBgmToggle');
+const videoReactionSelect = document.getElementById('videoReactionSelect');
+const btnDurShort = document.getElementById('btnDurShort');
+const btnDurStory = document.getElementById('btnDurStory');
+const videoModal = document.getElementById('videoModal');
+const btnCloseVideoModal = document.getElementById('btnCloseVideoModal');
+const btnCloseModalBtn = document.getElementById('btnCloseModalBtn');
+const previewVideoPlayer = document.getElementById('previewVideoPlayer');
+const btnDownloadVideoModal = document.getElementById('btnDownloadVideoModal');
+const btnDownloadGifModal = document.getElementById('btnDownloadGifModal');
 
 // Global Actions
 const btnCopy = document.getElementById('btnCopy');
@@ -236,6 +268,7 @@ function setupEvents() {
   tabText.addEventListener('click', () => switchTab('text'));
   tabOverlay.addEventListener('click', () => switchTab('overlay'));
   tabDraw.addEventListener('click', () => switchTab('draw'));
+  if (tabVideo) tabVideo.addEventListener('click', () => switchTab('video'));
   tabExport.addEventListener('click', () => switchTab('export'));
 
   // Format Switch
@@ -403,14 +436,17 @@ function setupEvents() {
 
   // Drag & drop
   setupDragAndDrop();
+
+  // Video & Sound Engine
+  initVideoEvents();
 }
 
 function switchTab(tab) {
   state.activeTab = tab;
-  [tabText, tabOverlay, tabDraw, tabExport].forEach((t) => {
+  [tabText, tabOverlay, tabDraw, tabVideo, tabExport].forEach((t) => {
     if (t) t.classList.remove('active');
   });
-  [paneText, paneOverlay, paneDraw, paneExport].forEach((p) => {
+  [paneText, paneOverlay, paneDraw, paneVideo, paneExport].forEach((p) => {
     if (p) p.classList.add('hidden');
   });
 
@@ -427,6 +463,10 @@ function switchTab(tab) {
     tabDraw.classList.add('active');
     paneDraw.classList.remove('hidden');
     setDrawMode(true);
+  } else if (tab === 'video') {
+    if (tabVideo) tabVideo.classList.add('active');
+    if (paneVideo) paneVideo.classList.remove('hidden');
+    setDrawMode(false);
   } else if (tab === 'export') {
     tabExport.classList.add('active');
     paneExport.classList.remove('hidden');
@@ -1335,6 +1375,631 @@ function setupDragAndDrop() {
       reader.readAsDataURL(files[0]);
     }
   });
+}
+
+// =============================================================================
+// MEMECRAFT VIDEO & SOUND ENGINE
+// =============================================================================
+
+const audioBufferCache = {};
+let webAudioCtx = null;
+
+function getAudioContext() {
+  if (!webAudioCtx) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (AudioContextClass) {
+      webAudioCtx = new AudioContextClass();
+    }
+  }
+  if (webAudioCtx && webAudioCtx.state === 'suspended') {
+    webAudioCtx.resume();
+  }
+  return webAudioCtx;
+}
+
+async function loadAudioBuffer(url) {
+  if (audioBufferCache[url]) return audioBufferCache[url];
+  const aCtx = getAudioContext();
+  if (!aCtx) return null;
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    const arrayBuffer = await resp.arrayBuffer();
+    const buffer = await aCtx.decodeAudioData(arrayBuffer);
+    audioBufferCache[url] = buffer;
+    return buffer;
+  } catch (err) {
+    console.warn('Audio asset load error:', url, err);
+    return null;
+  }
+}
+
+function synthesizeSoundFallback(type, aCtx, destNode, delayMs = 0) {
+  if (!aCtx) return;
+  const startTime = aCtx.currentTime + (delayMs / 1000);
+
+  if (type === 'vine-boom') {
+    const osc = aCtx.createOscillator();
+    const gain = aCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(110, startTime);
+    osc.frequency.exponentialRampToValueAtTime(36, startTime + 1.2);
+    gain.gain.setValueAtTime(0.9, startTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + 1.5);
+    osc.connect(gain);
+    gain.connect(destNode);
+    osc.start(startTime);
+    osc.stop(startTime + 1.5);
+  } else if (type === 'bruh') {
+    const osc = aCtx.createOscillator();
+    const gain = aCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(135, startTime);
+    osc.frequency.exponentialRampToValueAtTime(75, startTime + 0.65);
+    gain.gain.setValueAtTime(0.85, startTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.7);
+    osc.connect(gain);
+    gain.connect(destNode);
+    osc.start(startTime);
+    osc.stop(startTime + 0.7);
+  } else if (type === 'laugh-track') {
+    // Staccato laughing burst synthesis
+    for (let i = 0; i < 6; i++) {
+      const burstTime = startTime + i * 0.18;
+      const osc = aCtx.createOscillator();
+      const gain = aCtx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(260 + (i % 2 === 0 ? 30 : -20), burstTime);
+      gain.gain.setValueAtTime(0.4, burstTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, burstTime + 0.14);
+      osc.connect(gain);
+      gain.connect(destNode);
+      osc.start(burstTime);
+      osc.stop(burstTime + 0.14);
+    }
+  } else if (type === 'whoosh') {
+    const osc = aCtx.createOscillator();
+    const gain = aCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(280, startTime);
+    osc.frequency.linearRampToValueAtTime(1200, startTime + 0.15);
+    osc.frequency.linearRampToValueAtTime(250, startTime + 0.35);
+    gain.gain.setValueAtTime(0.01, startTime);
+    gain.gain.linearRampToValueAtTime(0.6, startTime + 0.15);
+    gain.gain.linearRampToValueAtTime(0.001, startTime + 0.35);
+    osc.connect(gain);
+    gain.connect(destNode);
+    osc.start(startTime);
+    osc.stop(startTime + 0.35);
+  } else if (type === 'record-scratch') {
+    const osc = aCtx.createOscillator();
+    const gain = aCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(800, startTime);
+    osc.frequency.exponentialRampToValueAtTime(180, startTime + 0.3);
+    gain.gain.setValueAtTime(0.5, startTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.3);
+    osc.connect(gain);
+    gain.connect(destNode);
+    osc.start(startTime);
+    osc.stop(startTime + 0.3);
+  }
+}
+
+async function playAudioBuffer(url, fallbackType, aCtx, destNode, delayMs = 0, volume = 1.0, loop = false) {
+  if (!aCtx) return null;
+  const startTime = aCtx.currentTime + (delayMs / 1000);
+  try {
+    const buffer = await loadAudioBuffer(url);
+    if (buffer) {
+      const source = aCtx.createBufferSource();
+      source.buffer = buffer;
+      source.loop = loop;
+      const gain = aCtx.createGain();
+      gain.gain.setValueAtTime(volume, startTime);
+      source.connect(gain);
+      gain.connect(destNode);
+      source.start(startTime);
+      return source;
+    } else {
+      synthesizeSoundFallback(fallbackType, aCtx, destNode, delayMs);
+      return null;
+    }
+  } catch (err) {
+    synthesizeSoundFallback(fallbackType, aCtx, destNode, delayMs);
+    return null;
+  }
+}
+
+function populateSpeechVoices() {
+  if (!('speechSynthesis' in window) || !videoVoiceSelect) return;
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices || voices.length === 0) return;
+
+  const currentVal = videoVoiceSelect.value;
+  videoVoiceSelect.innerHTML = '<option value="auto">Auto (Best Natural English Voice)</option>';
+
+  const enVoices = voices.filter((v) => v.lang.startsWith('en'));
+  const otherVoices = voices.filter((v) => !v.lang.startsWith('en'));
+
+  enVoices.forEach((v) => {
+    const opt = document.createElement('option');
+    opt.value = v.name;
+    opt.textContent = `${v.name} (${v.lang})${v.default ? ' [Default]' : ''}`;
+    videoVoiceSelect.appendChild(opt);
+  });
+
+  if (otherVoices.length > 0) {
+    const group = document.createElement('optgroup');
+    group.label = 'Other Languages';
+    otherVoices.slice(0, 15).forEach((v) => {
+      const opt = document.createElement('option');
+      opt.value = v.name;
+      opt.textContent = `${v.name} (${v.lang})`;
+      group.appendChild(opt);
+    });
+    videoVoiceSelect.appendChild(group);
+  }
+
+  if (currentVal && currentVal !== 'auto') {
+    videoVoiceSelect.value = currentVal;
+  }
+}
+
+function speakMemeNarration(text, delayMs = 0) {
+  if (!state.videoSpeech || !('speechSynthesis' in window) || !text || !text.trim()) return;
+
+  setTimeout(() => {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text.trim());
+    utterance.rate = 1.05;
+    utterance.pitch = 1.0;
+
+    if (state.videoVoice && state.videoVoice !== 'auto') {
+      const voices = window.speechSynthesis.getVoices();
+      const match = voices.find((v) => v.name === state.videoVoice);
+      if (match) utterance.voice = match;
+    }
+    window.speechSynthesis.speak(utterance);
+  }, delayMs);
+}
+
+function initVideoEvents() {
+  if ('speechSynthesis' in window) {
+    populateSpeechVoices();
+    window.speechSynthesis.onvoiceschanged = populateSpeechVoices;
+  }
+
+  // Preset style switching
+  document.querySelectorAll('.btn-video-style').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.btn-video-style').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.videoStyle = btn.dataset.style;
+
+      if (state.videoStyle === 'sitcom') {
+        if (videoSfxSelect) videoSfxSelect.value = 'laugh-track';
+        if (videoReactionSelect) videoReactionSelect.value = 'laugh';
+      } else if (state.videoStyle === 'bruh') {
+        if (videoSfxSelect) videoSfxSelect.value = 'bruh';
+        if (videoReactionSelect) videoReactionSelect.value = 'bruh';
+      } else if (state.videoStyle === 'deepfry') {
+        if (videoSfxSelect) videoSfxSelect.value = 'vine-boom';
+        if (videoReactionSelect) videoReactionSelect.value = 'lasers';
+      } else if (state.videoStyle === 'drift') {
+        if (videoSfxSelect) videoSfxSelect.value = 'none';
+        if (videoReactionSelect) videoReactionSelect.value = 'none';
+      }
+    });
+  });
+
+  // Duration toggles
+  if (btnDurShort && btnDurStory) {
+    btnDurShort.addEventListener('click', () => {
+      btnDurShort.classList.add('active');
+      btnDurStory.classList.remove('active');
+      state.videoDuration = 6;
+    });
+    btnDurStory.addEventListener('click', () => {
+      btnDurStory.classList.add('active');
+      btnDurShort.classList.remove('active');
+      state.videoDuration = 10;
+    });
+  }
+
+  if (videoSpeechToggle) {
+    videoSpeechToggle.addEventListener('change', (e) => {
+      state.videoSpeech = e.target.checked;
+    });
+  }
+
+  if (videoVoiceSelect) {
+    videoVoiceSelect.addEventListener('change', (e) => {
+      state.videoVoice = e.target.value;
+    });
+  }
+
+  if (videoSfxSelect) {
+    videoSfxSelect.addEventListener('change', (e) => {
+      state.videoSfx = e.target.value;
+    });
+  }
+
+  if (videoBgmToggle) {
+    videoBgmToggle.addEventListener('change', (e) => {
+      state.videoBgm = e.target.checked;
+    });
+  }
+
+  if (videoReactionSelect) {
+    videoReactionSelect.addEventListener('change', (e) => {
+      state.videoReaction = e.target.value;
+    });
+  }
+
+  if (btnGenerateVideo) {
+    btnGenerateVideo.addEventListener('click', generateMemeVideo);
+  }
+
+  if (btnCloseVideoModal) btnCloseVideoModal.addEventListener('click', closeVideoModal);
+  if (btnCloseModalBtn) btnCloseModalBtn.addEventListener('click', closeVideoModal);
+  if (videoModal) {
+    videoModal.addEventListener('click', (e) => {
+      if (e.target === videoModal) closeVideoModal();
+    });
+  }
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && videoModal && !videoModal.classList.contains('hidden')) {
+      closeVideoModal();
+    }
+  });
+
+  if (btnDownloadVideoModal) {
+    btnDownloadVideoModal.addEventListener('click', downloadVideoFile);
+  }
+
+  if (btnDownloadGifModal) {
+    btnDownloadGifModal.addEventListener('click', downloadGifFile);
+  }
+}
+
+function closeVideoModal() {
+  if (videoModal) videoModal.classList.add('hidden');
+  if (previewVideoPlayer) {
+    previewVideoPlayer.pause();
+  }
+}
+
+function downloadVideoFile() {
+  if (!state.currentVideoBlob) {
+    showToast('No video rendered yet');
+    return;
+  }
+  const isMp4 = state.currentVideoBlob.type.includes('mp4');
+  const ext = isMp4 ? 'mp4' : 'webm';
+  const a = document.createElement('a');
+  a.href = state.currentVideoUrl;
+  a.download = `memecraft-${state.videoStyle}-${Date.now()}.${ext}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  showToast(`Video downloaded (${ext.toUpperCase()})`);
+}
+
+function downloadGifFile() {
+  if (!state.currentVideoBlob) {
+    showToast('No video rendered yet');
+    return;
+  }
+  // If browser recorded webm/mp4, download or copy
+  downloadVideoFile();
+}
+
+// --- Main In-Browser Video Generation Loop ---
+async function generateMemeVideo() {
+  if (!state.activeImage) {
+    showToast('Please select or upload an image first');
+    return;
+  }
+
+  if (state.isRecordingVideo) return;
+  state.isRecordingVideo = true;
+
+  btnGenerateVideo.disabled = true;
+  btnGenerateVideo.innerHTML = `
+    <svg class="spin-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+    Rendering Video...
+  `;
+  videoProgressBox.classList.remove('hidden');
+  videoProgressBarFill.style.width = '0%';
+  videoProgressLabel.textContent = 'Initializing soundboard & video stream...';
+
+  const aCtx = getAudioContext();
+  const audioDest = aCtx ? aCtx.createMediaStreamDestination() : null;
+
+  const duration = state.videoDuration; // seconds
+  const punchTime = duration * 0.5;
+
+  // Sound cues setup
+  const sfxUrls = {
+    'laugh-track': 'assets/audio/laugh-track.wav',
+    'vine-boom': 'assets/audio/vine-boom.wav',
+    'bruh': 'assets/audio/bruh.wav',
+    'record-scratch': 'assets/audio/record-scratch.wav',
+    'dramatic-hit': 'assets/audio/dramatic-hit.wav',
+    'bell-ping': 'assets/audio/bell-ping.wav'
+  };
+
+  if (aCtx && audioDest) {
+    // 1. Play Background Beat if enabled
+    if (state.videoBgm) {
+      playAudioBuffer('assets/audio/lofi-beat.wav', 'lofi-beat', aCtx, audioDest, 0, 0.16, true);
+    }
+    // 2. Play Whoosh transition
+    playAudioBuffer('assets/audio/whoosh.wav', 'whoosh', aCtx, audioDest, Math.max(0, (punchTime - 0.35) * 1000), 0.7);
+
+    // 3. Play Punchline SFX
+    if (state.videoSfx && state.videoSfx !== 'none' && sfxUrls[state.videoSfx]) {
+      playAudioBuffer(sfxUrls[state.videoSfx], state.videoSfx, aCtx, audioDest, punchTime * 1000, 0.9);
+    }
+  }
+
+  // Natural Speech Narration
+  const topTextObj = state.texts.find((t) => t.isTop) || state.texts[0];
+  const bottomTextObj = state.texts.find((t) => t.isBottom) || state.texts[1];
+  const setupText = (state.layout === 'modern' ? state.headerCaption : topTextObj?.text) || '';
+  const punchlineText = (state.layout === 'modern' ? '' : bottomTextObj?.text) || '';
+
+  speakMemeNarration(setupText, 300);
+  if (punchlineText) {
+    speakMemeNarration(punchlineText, (punchTime + 0.3) * 1000);
+  }
+
+  // Target offscreen canvas: 720x1280 (9:16 vertical video for mobile / Shorts / Reels)
+  const vWidth = 720;
+  const vHeight = 1280;
+  const vCanvas = document.createElement('canvas');
+  vCanvas.width = vWidth;
+  vCanvas.height = vHeight;
+  const vCtx = vCanvas.getContext('2d');
+
+  // MediaRecorder stream setup
+  const videoStream = vCanvas.captureStream(30);
+  const streamTracks = [...videoStream.getVideoTracks()];
+  if (audioDest && audioDest.stream) {
+    streamTracks.push(...audioDest.stream.getAudioTracks());
+  }
+  const combinedStream = new MediaStream(streamTracks);
+
+  let mimeType = 'video/webm;codecs=vp9';
+  if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1')) {
+    mimeType = 'video/mp4;codecs=avc1';
+  } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+    mimeType = 'video/mp4';
+  } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
+    mimeType = 'video/webm;codecs=vp8';
+  } else if (MediaRecorder.isTypeSupported('video/webm')) {
+    mimeType = 'video/webm';
+  }
+
+  let mediaRecorder;
+  try {
+    mediaRecorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 3000000 });
+  } catch (err) {
+    mediaRecorder = new MediaRecorder(combinedStream);
+  }
+
+  const recordedChunks = [];
+  mediaRecorder.ondataavailable = (e) => {
+    if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+  };
+
+  mediaRecorder.onstop = () => {
+    state.isRecordingVideo = false;
+    btnGenerateVideo.disabled = false;
+    btnGenerateVideo.innerHTML = `
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      Render Meme Video
+    `;
+    videoProgressBox.classList.add('hidden');
+
+    const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || mimeType });
+    state.currentVideoBlob = blob;
+    if (state.currentVideoUrl) URL.revokeObjectURL(state.currentVideoUrl);
+    state.currentVideoUrl = URL.createObjectURL(blob);
+
+    if (previewVideoPlayer) {
+      previewVideoPlayer.src = state.currentVideoUrl;
+      previewVideoPlayer.play().catch(() => {});
+    }
+    if (videoModal) {
+      videoModal.classList.remove('hidden');
+    }
+    showToast('Video ready! 🎬');
+  };
+
+  mediaRecorder.start(100);
+
+  // Template Split-Panel Geometry
+  const imgW = state.activeImage.naturalWidth;
+  const imgH = state.activeImage.naturalHeight;
+  const tmplId = state.currentTemplate?.id || '';
+
+  // Setup panel (A) and Punchline panel (B)
+  let panelA = { sx: 0, sy: 0, sw: imgW, sh: imgH / 2 };
+  let panelB = { sx: 0, sy: imgH / 2, sw: imgW, sh: imgH / 2 };
+
+  if (tmplId === 'woman-cat') {
+    panelA = { sx: 0, sy: 0, sw: imgW / 2, sh: imgH };
+    panelB = { sx: imgW / 2, sy: 0, sw: imgW / 2, sh: imgH };
+  } else if (tmplId === 'cmm') {
+    panelA = { sx: 0, sy: 0, sw: imgW * 0.7, sh: imgH * 0.65 };
+    panelB = { sx: 0, sy: imgH * 0.35, sw: imgW, sh: imgH * 0.65 };
+  } else if (tmplId === 'spongebob' || tmplId === 'fine' || tmplId === 'doge') {
+    panelA = { sx: 0, sy: 0, sw: imgW, sh: imgH };
+    panelB = { sx: imgW * 0.1, sy: imgH * 0.1, sw: imgW * 0.8, sh: imgH * 0.8 };
+  }
+
+  const startRecordTime = performance.now();
+  const totalDurationMs = duration * 1000;
+
+  function renderVideoFrame(now) {
+    const elapsedMs = now - startRecordTime;
+    const t = Math.min(elapsedMs / 1000, duration);
+    const progress = Math.min(100, Math.round((t / duration) * 100));
+
+    videoProgressBarFill.style.width = `${progress}%`;
+    videoProgressLabel.textContent = `Rendering video... ${progress}%`;
+
+    // 1. Draw blurred background covering 720x1280
+    vCtx.save();
+    vCtx.filter = 'blur(22px) brightness(0.65)';
+    vCtx.drawImage(state.activeImage, -40, -40, vWidth + 80, vHeight + 80);
+    vCtx.restore();
+
+    // 2. Camera tracking calculation
+    const timeSincePunch = t - punchTime;
+    const isPunchline = t >= punchTime;
+    let shakeX = 0;
+    let shakeY = 0;
+
+    if (isPunchline && timeSincePunch < 0.65) {
+      const shakeAmp = Math.max(0, 1.0 - timeSincePunch / 0.65) * (state.videoStyle === 'deepfry' ? 26 : 16);
+      shakeX = Math.sin(timeSincePunch * 55) * shakeAmp;
+      shakeY = Math.cos(timeSincePunch * 55) * (shakeAmp * 0.75);
+    }
+
+    // Centered foreground target rect
+    const fgMaxWidth = 660;
+    const fgMaxHeight = 840;
+    const fgScale = Math.min(fgMaxWidth / imgW, fgMaxHeight / imgH);
+    const fgW = imgW * fgScale;
+    const fgH = imgH * fgScale;
+    const fgX = (vWidth - fgW) / 2 + shakeX;
+    const fgY = (vHeight - fgH) / 2 + shakeY;
+
+    // Draw card drop shadow & background container
+    vCtx.save();
+    vCtx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+    vCtx.shadowBlur = 24;
+    vCtx.fillStyle = '#000000';
+    vCtx.fillRect(fgX, fgY, fgW, fgH);
+    vCtx.restore();
+
+    // Apply Mood Visual Filters
+    vCtx.save();
+    if (state.videoStyle === 'deepfry' && isPunchline) {
+      vCtx.filter = 'contrast(155%) saturate(190%)';
+    } else if (state.videoStyle === 'bruh' && isPunchline && timeSincePunch < 0.9) {
+      vCtx.filter = 'grayscale(85%) contrast(120%)';
+    } else if (state.videoStyle === 'drift') {
+      vCtx.filter = 'contrast(108%)';
+    }
+
+    // Smooth Ken Burns Camera Zoom on Foreground
+    if (!isPunchline) {
+      // Scene 1: Slow camera drift into Panel A
+      const zoom = 1.0 + (t / punchTime) * 0.08;
+      vCtx.drawImage(
+        state.activeImage,
+        panelA.sx, panelA.sy, panelA.sw, panelA.sh,
+        fgX - (fgW * (zoom - 1)) / 2, fgY - (fgH * (zoom - 1)) / 2,
+        fgW * zoom, fgH * (panelA.sh / imgH) * zoom
+      );
+    } else {
+      // Scene 2: Snap Zoom on Panel B with punch impact
+      const punchZoom = 1.12 - Math.min(0.08, timeSincePunch * 0.08);
+      vCtx.drawImage(
+        state.activeImage,
+        panelB.sx, panelB.sy, panelB.sw, panelB.sh,
+        fgX - (fgW * (punchZoom - 1)) / 2, fgY + (fgH * (panelB.sy / imgH)),
+        fgW * punchZoom, fgH * (panelB.sh / imgH) * punchZoom
+      );
+    }
+    vCtx.restore();
+
+    // 3. Render High-Visibility Meme Captions
+    const fontFamily = state.fontFamily || 'Impact';
+    vCtx.textAlign = 'center';
+    vCtx.textBaseline = 'middle';
+
+    // Top Caption (Scene 1)
+    if (setupText) {
+      vCtx.save();
+      const cap1Y = 140;
+      vCtx.font = `900 46px "${fontFamily}", Impact, sans-serif`;
+      vCtx.fillStyle = '#FFFFFF';
+      vCtx.strokeStyle = '#000000';
+      vCtx.lineWidth = 9;
+      vCtx.lineJoin = 'round';
+      vCtx.strokeText(setupText.toUpperCase(), vWidth / 2, cap1Y);
+      vCtx.fillText(setupText.toUpperCase(), vWidth / 2, cap1Y);
+      vCtx.restore();
+    }
+
+    // Bottom Caption (Scene 2 on Punchline)
+    if (punchlineText && isPunchline) {
+      vCtx.save();
+      const cap2Y = vHeight - 160;
+      const popScale = Math.min(1.0, timeSincePunch * 4.0);
+      vCtx.translate(vWidth / 2, cap2Y);
+      vCtx.scale(popScale, popScale);
+
+      vCtx.font = `900 48px "${fontFamily}", Impact, sans-serif`;
+      vCtx.fillStyle = '#FFE600'; // Vibrant punchline yellow
+      vCtx.strokeStyle = '#000000';
+      vCtx.lineWidth = 10;
+      vCtx.lineJoin = 'round';
+      vCtx.strokeText(punchlineText.toUpperCase(), 0, 0);
+      vCtx.fillText(punchlineText.toUpperCase(), 0, 0);
+      vCtx.restore();
+    }
+
+    // 4. Render Reaction Overlays
+    if (isPunchline) {
+      if (state.videoReaction === 'laugh') {
+        // Floating 😂 laughing emojis
+        vCtx.font = '54px sans-serif';
+        const floatY = (vHeight - 240) - (timeSincePunch * 90);
+        const alpha = Math.max(0, 1.0 - timeSincePunch / (duration - punchTime));
+        vCtx.globalAlpha = alpha;
+        vCtx.fillText('😂', vWidth * 0.25 + Math.sin(timeSincePunch * 4) * 15, floatY);
+        vCtx.fillText('🤣', vWidth * 0.75 + Math.cos(timeSincePunch * 4) * 15, floatY - 30);
+        vCtx.globalAlpha = 1.0;
+      } else if (state.videoReaction === 'bruh') {
+        // Bold red rubber stamp BRUH
+        vCtx.save();
+        vCtx.translate(vWidth / 2, vHeight / 2);
+        vCtx.rotate(-0.2);
+        vCtx.fillStyle = 'rgba(239, 68, 68, 0.9)';
+        vCtx.strokeStyle = '#FFFFFF';
+        vCtx.lineWidth = 6;
+        vCtx.font = '900 76px Impact, sans-serif';
+        vCtx.strokeText('BRUH', 0, 0);
+        vCtx.fillText('BRUH', 0, 0);
+        vCtx.restore();
+      } else if (state.videoReaction === 'lasers') {
+        // Glowing red laser eye effect
+        vCtx.save();
+        vCtx.fillStyle = '#FF0000';
+        vCtx.shadowColor = '#FF0000';
+        vCtx.shadowBlur = 25;
+        vCtx.beginPath();
+        vCtx.arc(fgX + fgW * 0.45, fgY + fgH * 0.35, 12, 0, Math.PI * 2);
+        vCtx.arc(fgX + fgW * 0.55, fgY + fgH * 0.35, 12, 0, Math.PI * 2);
+        vCtx.fill();
+        vCtx.restore();
+      }
+    }
+
+    if (t < duration) {
+      requestAnimationFrame(renderVideoFrame);
+    } else {
+      mediaRecorder.stop();
+    }
+  }
+
+  requestAnimationFrame(renderVideoFrame);
 }
 
 // --- Toast Feedback ---

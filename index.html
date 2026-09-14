@@ -88,7 +88,7 @@
       <!-- Sidebar Controls -->
       <section class="controls-panel">
         <!-- Primary Tool Tabs -->
-        <div class="tool-tabs four-tabs" role="tablist">
+        <div class="tool-tabs five-tabs" role="tablist">
           <button type="button" class="tool-tab active" id="tabText" data-tab="text">
             Text
           </button>
@@ -97,6 +97,9 @@
           </button>
           <button type="button" class="tool-tab" id="tabDraw" data-tab="draw">
             Marker
+          </button>
+          <button type="button" class="tool-tab" id="tabVideo" data-tab="video">
+            Video 🎬
           </button>
           <button type="button" class="tool-tab" id="tabExport" data-tab="export">
             Export
@@ -268,7 +271,106 @@
           </div>
         </div>
 
-        <!-- TAB 3: EXPORT & FORMAT -->
+        <!-- TAB 4: VIDEO & ANIMATION -->
+        <div id="paneVideo" class="tab-pane hidden">
+          <div class="control-group">
+            <label class="control-label">Meme Video Style</label>
+            <div class="video-style-grid">
+              <button type="button" class="btn-video-style active" data-style="sitcom" title="Panel A zoom to Panel B snap with audience laughter">
+                <span class="style-icon">😂</span>
+                <span class="style-title">Sitcom Laugh</span>
+                <span class="style-desc">Panel snap + crowd laugh</span>
+              </button>
+              <button type="button" class="btn-video-style" data-style="bruh" title="Push in, freeze frame, record scratch and deep bruh sound">
+                <span class="style-icon">💀</span>
+                <span class="style-title">Freeze Bruh</span>
+                <span class="style-desc">Freeze-frame + record scratch</span>
+              </button>
+              <button type="button" class="btn-video-style" data-style="deepfry" title="High contrast screen shake with vine boom">
+                <span class="style-icon">🔥</span>
+                <span class="style-title">Deep Fried</span>
+                <span class="style-desc">Intense shake + vine boom</span>
+              </button>
+              <button type="button" class="btn-video-style" data-style="drift" title="Smooth Ken Burns drift with chill beat">
+                <span class="style-icon">😎</span>
+                <span class="style-title">Phonk Drift</span>
+                <span class="style-desc">Cinematic zoom + beat</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="control-group">
+            <div class="control-label-row">
+              <label class="control-label">Natural Voiceover</label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="videoSpeechToggle" checked>
+                <span>Speak Captions</span>
+              </label>
+            </div>
+            <select id="videoVoiceSelect" class="select-input">
+              <option value="auto" selected>Auto (Best Natural English Voice)</option>
+            </select>
+          </div>
+
+          <div class="control-row">
+            <div class="control-group flex-1">
+              <label for="videoSfxSelect" class="control-label">Punchline Sound</label>
+              <select id="videoSfxSelect" class="select-input">
+                <option value="laugh-track" selected>Crowd Laugh Track</option>
+                <option value="vine-boom">Vine Boom (Sub-bass)</option>
+                <option value="bruh">Iconic Bruh</option>
+                <option value="record-scratch">Record Scratch</option>
+                <option value="dramatic-hit">Dramatic Hit</option>
+                <option value="bell-ping">Bell Ding</option>
+                <option value="none">None (Mute SFX)</option>
+              </select>
+            </div>
+
+            <div class="control-group">
+              <label class="control-label">Background Beat</label>
+              <label class="checkbox-label" style="margin-top: 8px;">
+                <input type="checkbox" id="videoBgmToggle" checked>
+                <span>Lo-Fi Beat</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="control-row">
+            <div class="control-group flex-1">
+              <label class="control-label">Reaction Effect</label>
+              <select id="videoReactionSelect" class="select-input">
+                <option value="laugh" selected>Floating Emojis (😂)</option>
+                <option value="bruh">Red BRUH Stamp</option>
+                <option value="lasers">Laser Eyes Highlight</option>
+                <option value="none">None</option>
+              </select>
+            </div>
+
+            <div class="control-group">
+              <label class="control-label">Duration</label>
+              <div class="layout-toggle" style="margin-top: 4px;">
+                <button type="button" class="toggle-btn active" id="btnDurShort" data-duration="6">6s Short</button>
+                <button type="button" class="toggle-btn" id="btnDurStory" data-duration="10">10s Story</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="video-cta-group" style="margin-top: 16px;">
+            <button type="button" id="btnGenerateVideo" class="btn btn-primary btn-lg" style="width: 100%; justify-content: center; gap: 8px; font-weight: 600;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Render Meme Video
+            </button>
+
+            <div id="videoProgressBox" class="video-progress-box hidden">
+              <div class="video-progress-bar">
+                <div id="videoProgressBarFill" class="video-progress-fill"></div>
+              </div>
+              <span id="videoProgressLabel" class="video-progress-label">Rendering frames... 0%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 5: EXPORT & FORMAT -->
         <div id="paneExport" class="tab-pane hidden">
           <div class="control-group">
             <label class="control-label">Aspect Ratio</label>
@@ -332,6 +434,38 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <!-- Video Preview & Export Modal -->
+  <div id="videoModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <span class="modal-badge">🎬 Render Complete</span>
+          <h3 id="modalTitle">Your Meme Video is Ready!</h3>
+        </div>
+        <button type="button" id="btnCloseVideoModal" class="btn-close-modal" aria-label="Close modal">×</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="video-preview-wrapper">
+          <video id="previewVideoPlayer" controls autoplay loop playsinline class="preview-video"></video>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" id="btnDownloadVideoModal" class="btn btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download Video
+        </button>
+        <button type="button" id="btnDownloadGifModal" class="btn btn-secondary">
+          🎞️ Download GIF
+        </button>
+        <button type="button" id="btnCloseModalBtn" class="btn btn-ghost">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
 
   <script src="script.js"></script>
 </body>

@@ -4,15 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MemeCraft — Fast, Clean Meme Creator</title>
-  <meta name="description" content="A simple, distraction-free meme creator. Choose classic templates, upload images, or paste directly from your clipboard.">
+  <meta name="description" content="A simple, distraction-free meme creator. Add draggable text, draw annotations, and export without watermarks.">
 
   <!-- Open Graph / Social Meta -->
   <meta property="og:type" content="website">
   <meta property="og:title" content="MemeCraft — Fast, Clean Meme Creator">
-  <meta property="og:description" content="A simple, distraction-free meme creator. Choose classic templates, upload images, or paste directly from your clipboard.">
+  <meta property="og:description" content="A simple, distraction-free meme creator. Add draggable text, draw annotations, and export without watermarks.">
   <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="MemeCraft — Fast, Clean Meme Creator">
-  <meta name="twitter:description" content="A simple, distraction-free meme creator. Choose classic templates, upload images, or paste directly from your clipboard.">
 
   <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
@@ -44,6 +42,7 @@
         </div>
 
         <div class="header-actions">
+          <span class="privacy-badge">🔒 100% Client-Side</span>
           <button type="button" id="btnShareApp" class="btn btn-ghost btn-sm" title="Share MemeCraft link">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
             Share App
@@ -71,69 +70,173 @@
       <!-- Canvas Display -->
       <section class="canvas-panel" id="dropZone">
         <div class="canvas-frame" id="canvasContainer">
-          <canvas id="memeCanvas"></canvas>
+          <canvas id="memeCanvas" tabindex="0"></canvas>
           <div class="drop-hint" id="dropOverlay">
             <span>Drop image here</span>
           </div>
+        </div>
+        <div class="canvas-hints">
+          <span>Click & drag text to position • Use arrow keys to nudge • <kbd>Del</kbd> to remove</span>
         </div>
       </section>
 
       <!-- Sidebar Controls -->
       <section class="controls-panel">
-        <!-- Layout mode -->
-        <div class="control-group">
-          <label class="control-label">Layout</label>
-          <div class="layout-toggle" role="group">
-            <button type="button" class="toggle-btn active" id="modeOverlay" data-mode="classic">
-              Top & Bottom
-            </button>
-            <button type="button" class="toggle-btn" id="modeHeader" data-mode="modern">
-              Header Box
-            </button>
-          </div>
+        <!-- Primary Tool Tabs -->
+        <div class="tool-tabs" role="tablist">
+          <button type="button" class="tool-tab active" id="tabText" data-tab="text">
+            Text
+          </button>
+          <button type="button" class="tool-tab" id="tabDraw" data-tab="draw">
+            Red Marker
+          </button>
+          <button type="button" class="tool-tab" id="tabExport" data-tab="export">
+            Export
+          </button>
         </div>
 
-        <!-- Inputs for Top & Bottom text -->
-        <div id="classicInputs" class="text-inputs-block">
+        <!-- TAB 1: TEXT TOOLS -->
+        <div id="paneText" class="tab-pane">
+          <!-- Layout mode -->
           <div class="control-group">
-            <label for="topText" class="control-label">Top Text</label>
-            <input type="text" id="topText" placeholder="Top text" autocomplete="off" spellcheck="false">
-          </div>
-          <div class="control-group">
-            <label for="bottomText" class="control-label">Bottom Text</label>
-            <input type="text" id="bottomText" placeholder="Bottom text" autocomplete="off" spellcheck="false">
-          </div>
-        </div>
-
-        <!-- Input for Header caption -->
-        <div id="modernInputs" class="text-inputs-block hidden">
-          <div class="control-group">
-            <label for="captionText" class="control-label">Caption</label>
-            <textarea id="captionText" rows="3" placeholder="Write your caption here..."></textarea>
-          </div>
-        </div>
-
-        <!-- Text formatting -->
-        <div class="control-row">
-          <div class="control-group flex-1">
-            <div class="control-label-row">
-              <label for="fontSizeRange">Font Size</label>
-              <span id="fontSizeVal">38px</span>
+            <label class="control-label">Format</label>
+            <div class="layout-toggle" role="group">
+              <button type="button" class="toggle-btn active" id="modeOverlay" data-mode="classic">
+                Overlay Text
+              </button>
+              <button type="button" class="toggle-btn" id="modeHeader" data-mode="modern">
+                Header Box
+              </button>
             </div>
-            <input type="range" id="fontSizeRange" min="18" max="72" value="38" step="2">
           </div>
 
-          <div class="control-group">
-            <label class="control-label">Uppercase</label>
-            <label class="checkbox-label">
-              <input type="checkbox" id="capsCheckbox" checked>
-              <span>ALL CAPS</span>
-            </label>
+          <!-- Overlay Text List & Controls -->
+          <div id="classicInputs" class="text-inputs-block">
+            <div class="layer-header">
+              <span class="control-label">Text Layers</span>
+              <button type="button" id="btnAddText" class="btn btn-ghost btn-sm">
+                + Add Text
+              </button>
+            </div>
+
+            <!-- Dynamic Text Layer Inputs -->
+            <div id="textLayersList" class="text-layers-list">
+              <!-- Populated by JS -->
+            </div>
+
+            <div class="control-row">
+              <div class="control-group flex-1">
+                <div class="control-label-row">
+                  <label for="fontSizeRange">Font Size</label>
+                  <span id="fontSizeVal">38px</span>
+                </div>
+                <input type="range" id="fontSizeRange" min="16" max="72" value="38" step="2">
+              </div>
+
+              <div class="control-group">
+                <label class="control-label">Case</label>
+                <label class="checkbox-label">
+                  <input type="checkbox" id="capsCheckbox" checked>
+                  <span>ALL CAPS</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Header Box Caption -->
+          <div id="modernInputs" class="text-inputs-block hidden">
+            <div class="control-group">
+              <label for="captionText" class="control-label">Top Caption</label>
+              <textarea id="captionText" rows="3" placeholder="Write caption here..."></textarea>
+            </div>
+            <div class="control-row">
+              <div class="control-group flex-1">
+                <div class="control-label-row">
+                  <label for="headerFontSizeRange">Font Size</label>
+                  <span id="headerFontSizeVal">32px</span>
+                </div>
+                <input type="range" id="headerFontSizeRange" min="16" max="54" value="32" step="2">
+              </div>
+            </div>
           </div>
         </div>
 
-        <!-- Actions -->
-        <div class="actions">
+        <!-- TAB 2: DRAWING / RED MARKER -->
+        <div id="paneDraw" class="tab-pane hidden">
+          <div class="control-group">
+            <label class="control-label">Marker Mode</label>
+            <div class="layout-toggle">
+              <button type="button" class="toggle-btn" id="btnPenToggle">
+                Draw Active
+              </button>
+              <button type="button" class="toggle-btn active" id="btnPenSelect">
+                Select / Move Text
+              </button>
+            </div>
+          </div>
+
+          <div class="control-group">
+            <label class="control-label">Stroke Width</label>
+            <div class="pen-sizes">
+              <button type="button" class="btn-size" data-size="3">Thin</button>
+              <button type="button" class="btn-size active" data-size="6">Medium</button>
+              <button type="button" class="btn-size" data-size="12">Thick</button>
+            </div>
+          </div>
+
+          <div class="control-group">
+            <label class="control-label">Color</label>
+            <div class="color-palette">
+              <button type="button" class="btn-color active" data-color="#ef4444" style="background:#ef4444;" title="Red"></button>
+              <button type="button" class="btn-color" data-color="#f59e0b" style="background:#f59e0b;" title="Yellow"></button>
+              <button type="button" class="btn-color" data-color="#3b82f6" style="background:#3b82f6;" title="Blue"></button>
+              <button type="button" class="btn-color" data-color="#ffffff" style="background:#ffffff;" title="White"></button>
+              <button type="button" class="btn-color" data-color="#000000" style="background:#000000;" title="Black"></button>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button type="button" id="btnUndoStroke" class="btn btn-secondary">
+              Undo Stroke
+            </button>
+            <button type="button" id="btnClearStrokes" class="btn btn-ghost">
+              Clear Drawings
+            </button>
+          </div>
+        </div>
+
+        <!-- TAB 3: EXPORT & FORMAT -->
+        <div id="paneExport" class="tab-pane hidden">
+          <div class="control-group">
+            <label class="control-label">Format</label>
+            <div class="layout-toggle">
+              <button type="button" class="toggle-btn active" id="fmtPng" data-format="png">
+                PNG (Lossless)
+              </button>
+              <button type="button" class="toggle-btn" id="fmtJpg" data-format="jpeg">
+                JPEG (Compact)
+              </button>
+            </div>
+          </div>
+
+          <div id="jpegQualityGroup" class="control-group hidden">
+            <div class="control-label-row">
+              <label for="jpgQuality">Quality</label>
+              <span id="jpgQualityVal">85%</span>
+            </div>
+            <input type="range" id="jpgQuality" min="40" max="100" value="85" step="5">
+          </div>
+
+          <div class="control-group">
+            <label class="control-label">File Details</label>
+            <div class="file-stat-box">
+              <span id="fileSizeEstimate">Calculating size...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom Action Buttons (Always Available) -->
+        <div class="actions main-actions">
           <button type="button" id="btnCopy" class="btn btn-primary">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
             Copy Image
@@ -142,8 +245,8 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Download
           </button>
-          <button type="button" id="btnClear" class="btn btn-ghost" title="Clear text">
-            Clear
+          <button type="button" id="btnClearAll" class="btn btn-ghost" title="Reset all text & drawings">
+            Reset
           </button>
         </div>
       </section>
